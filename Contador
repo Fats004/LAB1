@@ -1,0 +1,156 @@
+;*******************************************************************************************************************************************
+; Universidad del Valle de Guatemala
+; IE2023 Programación de Microcontroladores
+; Contador.asm
+; Proyecto: Contador 4 Bits
+; Hardware: ATMEGA328P
+; Created: 1/30/2024 9:10:47 AM
+; Author : Fatima
+;********************************************************************************************************************************************
+
+;********************************************************************************************************************************************
+;ENCABEZADO
+;********************************************************************************************************************************************
+
+ .INCLUDE "M328PDEF.INC"
+ .CSEG
+ .ORG 0x00
+
+;********************************************************************************************************************************************
+; STACK POINTER
+;********************************************************************************************************************************************
+
+	LDI R16, LOW(RAMEND)
+	OUT SPL, R16
+	LDI R17, HIGH(RAMEND)
+	OUT SPH, R17
+
+;********************************************************************************************************************************************
+; CONFIGURACIÓN
+;********************************************************************************************************************************************
+
+Setup:
+    LDI R16, (1 << CLKPCE) ; Habilitar el prescaler
+	STS CLKPR, R16 ; No es un espacio I/O entonces se usa STS
+	LDI R16, 0b0000_0100
+	STS CLKPR, R16 ; Dividir por 16 la frecuencia del reloj (1MHz)
+
+	LDI R16, 0b1111_1111 ; salidas
+	OUT DDRD, R16
+	LDI R16, 0b0001_1111
+	OUT DDRB, R16
+	LDI R16, 0b0000_0000 ; entradas
+	OUT DDRC, R16
+	LDI R16, 0b0011_1111
+	OUT PORTC, R16
+
+	LDI R16, 0xFF
+	MOV R17, R16
+
+;********************************************************************************************************************************************
+
+LECTURA_VARIABLES:
+	MOV R17, R16 ; R17 para la comparacion de incremento
+	IN R16, PINC
+	CP R17, R16 ; compararlos y ejecutar lo siguiente si son iguales
+	BREQ LECTURA_VARIABLES ; Regresar al loop si son iguales
+	CALL DELAY
+	IN R16, PINC
+	CP R17, R16 ; compararlos y ejecutar lo siguiente si son iguales
+	BREQ LECTURA_VARIABLES ; Regresar al loop si son iguales
+	MOV R17, R16
+	SBRS R16, PC4
+	RJMP SUMADOR
+	SBRS R16, PC0
+	RJMP INCREMENTAR1 ; Ir a incrementar si son iguales
+	SBRS R16, PC1
+	RJMP DECREMENTAR1 ; Ir a decrementar si son iguales
+	SBRS R16, PC2
+	JMP INCREMENTAR2 ; Ir a incrementar si son iguales
+	SBRS R16, PC3
+	RJMP DECREMENTAR2 ; Ir a decrementar si son iguales
+	RJMP LECTURA_VARIABLES
+
+INCREMENTAR1:
+	CPI R18, 0b0000_1111
+	BRNE NO_OVERFLOW1 ; Ejecutar si no es igual
+	CALL SACARVALORES ; Llamar subrutina para sacar valores
+	RJMP LECTURA_VARIABLES
+
+NO_OVERFLOW1:
+	INC R18
+	CALL SACARVALORES ; Llamar subrutina para sacar valores
+	RJMP LECTURA_VARIABLES
+
+DECREMENTAR1:
+	CPI R18, 0b0000_0000
+	BRNE NO_UNDERFLOW1 ; Ejecutar si no es igual
+	CALL SACARVALORES ; Llamar subrutina para sacar valores
+	RJMP LECTURA_VARIABLES
+
+NO_UNDERFLOW1:
+	DEC R18 ; decrementar la variable
+	CALL SACARVALORES ; Llamar subrutina para sacar valores
+	RJMP LECTURA_VARIABLES
+
+INCREMENTAR2:
+	CPI R19, 0b0000_1111
+	BRNE NO_OVERFLOW2 ; Ejecutar si no es igual
+	LDI R19, 0b0000_1111 ; Resetear el valor de los 4 bits
+	CALL SACARVALORES ; Llamar subrutina para sacar valores
+	RJMP LECTURA_VARIABLES
+
+NO_OVERFLOW2:
+	INC R19
+	CALL SACARVALORES ; Llamar subrutina para sacar valores
+	RJMP LECTURA_VARIABLES
+
+DECREMENTAR2:
+	CPI R19, 0b0000_0000
+	BRNE NO_UNDERFLOW2 ; Ejecutar si no es igual
+	LDI R20, 0b0000_0000 ; Resetear el valor de los 4 bits
+	CALL SACARVALORES ; Llamar subrutina para sacar valores
+	RJMP LECTURA_VARIABLES
+
+NO_UNDERFLOW2:
+	DEC R19 ; decrementar la variable
+	CALL SACARVALORES ; Llamar subrutina para sacar valores
+	RJMP LECTURA_VARIABLES
+
+SACARVALORES:
+	MOV R20, R19 ; copiar este valor en la variable nueva
+	SWAP R20 ; intercambiar nibbles
+	OR R20, R18 ; Realizar un OR para añadir ambos valores a la variable
+	OUT PORTD, R20  ; Sacar la variable
+	RET
+
+SUMADOR:
+	MOV R20, R19
+	ADD R20, R18
+	MOV R21, R20
+	; limpiar el nibble superior
+	LDI R22, 0b0000_1111 
+	AND R20, R22
+	; limpiar el nibble inferior
+	LDI R22, 0b1111_0000 
+	AND R21, R22
+	LDI R17, 0b0000_0000
+	CPSE R21, R17 ; Verificar si hubo"overflow"
+	RJMP ENCENDER_CARRY
+	OUT PORTB, R20
+	RJMP LECTURA_VARIABLES
+
+ENCENDER_CARRY:
+	LDI R21, 0b0000_0001
+	SWAP R21
+	OR R20, R21
+	OUT PORTB, R20
+	RJMP LECTURA_VARIABLES
+
+DELAY:
+	LDI R16, 100
+
+LOOP_DELAY:
+	DEC R16
+	BRNE LOOP_DELAY
+	RET
